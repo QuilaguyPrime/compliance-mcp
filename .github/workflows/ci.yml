@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Instalar dependencias
+        # Sin el extra `dense`: los tests de fusion, metricas, filtros y rehuso
+        # no necesitan modelo de embeddings, asi que este job no descarga torch.
+        run: uv sync --extra dev || uv pip install --system -e ".[dev]"
+
+      - name: Lint
+        run: uv run ruff check src tests
+
+      - name: Ingest del catalogo
+        run: uv run python -m compliance_mcp.build_index ingest
+
+      - name: pytest
+        run: uv run pytest --cov=compliance_mcp --cov-report=term-missing
+
+  eval-gate:
+    name: Gate de evaluacion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Instalar dependencias (con indice denso)
+        run: uv pip install --system -e ".[dense,dev]"
+
+      - name: Cachear el modelo de embeddings
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('config.yaml') }}
+
+      - name: Construir corpus e indice
+        run: |
+          python -m compliance_mcp.build_index ingest
+          python -m compliance_mcp.build_index index
+
+      - name: Ablacion sobre el split de test
+        run: python -m compliance_mcp.eval.ablation --split test
+
+      - name: Gate
+        # Los umbrales viven en `gates:` de config.yaml, no aqui: el criterio
+        # de aceptacion se versiona junto al codigo que evalua.
+        run: python -m compliance_mcp.eval.gate
+
+      - name: Publicar resultados de la evaluacion
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ablation-results
+          path: data/derived/

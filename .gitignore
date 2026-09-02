@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Secrets
+.env
+
+# Artefactos de indexado y evaluacion (regenerables con `make index` / `make eval`)
+data/processed/
+data/index/
+data/derived/runs/
+
+# Cache de modelos
+.cache/
+.coverage
+coverage.xml
+htmlcov/

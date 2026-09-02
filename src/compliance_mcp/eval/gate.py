@@ -1,0 +1,101 @@
+"""Gate de evaluacion para CI.
+
+Lee los resultados de la ablacion y los compara con los umbrales de config.yaml.
+Falla con codigo distinto de cero si el sistema se degrada por debajo del
+umbral. Los umbrales viven en `gates:` en config.yaml, no en el YAML del
+workflow: asi el criterio de aceptacion se versiona junto al codigo que evalua.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import Any
+
+from ..config import Config, load_config
+from ..observability import configure_logging, log_event
+
+
+def check(results: dict[str, Any], config: Config) -> list[str]:
+    failures: list[str] = []
+
+    strategy = config.get("chunking.active")
+    method = "hybrid"
+    cell = results.get("grid", {}).get(strategy, {}).get(method)
+    if cell is None:
+        return [f"La ablacion no contiene la celda {strategy}/{method}"]
+
+    min_recall = config.get("gates.min_recall_at_5")
+    observed = cell.get("recall@5")
+    if observed is None:
+        failures.append("La celda evaluada no reporta recall@5")
+    elif observed < min_recall:
+        failures.append(
+            f"recall@5 = {observed:.3f} por debajo del umbral {min_recall:.3f} "
+            f"({strategy}/{method}, n={cell.get('n')})"
+        )
+
+    # Las metricas de generacion se anaden en la fase 3; el gate ya las contempla
+    # para que anadirlas no requiera tocar CI.
+    generation = results.get("generation")
+    if generation:
+        precision = generation.get("citation_precision")
+        min_precision = config.get("gates.min_citation_precision")
+        if precision is not None and precision < min_precision:
+            failures.append(
+                f"citation_precision = {precision:.3f} por debajo de {min_precision:.3f}"
+            )
+        hallucinated = generation.get("hallucinated_citation_rate")
+        max_hallucinated = config.get("gates.max_hallucinated_citation_rate")
+        if hallucinated is not None and hallucinated > max_hallucinated:
+            failures.append(
+                f"hallucinated_citation_rate = {hallucinated:.3f} por encima de "
+                f"{max_hallucinated:.3f}"
+            )
+    return failures
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="compliance-mcp-gate")
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--results", default=None)
+    args = parser.parse_args(argv)
+
+    config = load_config(args.config)
+    configure_logging(config)
+
+    path = config.path("evaluation.ablation.output_path")
+    if args.results:
+        from pathlib import Path
+
+        path = Path(args.results)
+    if not path.exists():
+        print(f"FALLO: no hay resultados de evaluacion en {path}", file=sys.stderr)
+        return 1
+
+    results = json.loads(path.read_text(encoding="utf-8"))
+    failures = check(results, config)
+
+    strategy = config.get("chunking.active")
+    cell = results.get("grid", {}).get(strategy, {}).get("hybrid", {})
+    log_event(
+        "gate.evaluated",
+        passed=not failures,
+        strategy=strategy,
+        recall_at_5=cell.get("recall@5"),
+        threshold=config.get("gates.min_recall_at_5"),
+        split=results.get("split"),
+        failures=failures,
+    )
+
+    if failures:
+        print("GATE FALLIDO:", file=sys.stderr)
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return 1
+    print(f"GATE OK: recall@5 = {cell.get('recall@5')} (umbral {config.get('gates.min_recall_at_5')})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
