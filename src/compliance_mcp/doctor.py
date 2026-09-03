@@ -37,7 +37,11 @@ GOLDEN = "golden_set"
 SERVE_EXTRA = "serve_extra"
 PROVIDERS = "providers"
 PRICING = "pricing"
-ALL_CHECKS = (CORPUS, INDEX, GOLDEN, SERVE_EXTRA, PROVIDERS, PRICING)
+# La ablacion compara estrategias de chunking: necesita el indice de TODAS,
+# no solo la que se sirve. Es una exigencia del arnes de evaluacion, no del
+# servidor, asi que va aparte y cada job pide la que le toca.
+ABLATION_INDEX = "ablation_index"
+ALL_CHECKS = (CORPUS, INDEX, ABLATION_INDEX, GOLDEN, SERVE_EXTRA, PROVIDERS, PRICING)
 
 
 @dataclass(slots=True)
@@ -64,13 +68,11 @@ def check_corpus(config: Config) -> tuple[Check, list | None]:
     return Check(CORPUS, status, detail), records
 
 
-def check_index(config: Config, records: list | None) -> Check:
-    strategy = config.get("chunking.active")
+def _inspect(config: Config, strategy: str, records: list) -> tuple[list[str], str]:
+    """Problemas de un indice y su descripcion. Lista vacia = fresco."""
     path = embeddings_path(config, strategy)
     if not path.exists():
-        return Check(INDEX, FAIL, f"Faltan los embeddings en {path}. Ejecuta `make index`.")
-    if records is None:
-        return Check(INDEX, FAIL, "No se puede verificar sin corpus")
+        return [f"faltan los embeddings de {strategy} en {path}"], ""
 
     import numpy as np
 
@@ -79,14 +81,51 @@ def check_index(config: Config, records: list | None) -> Check:
     problems = check_entry(
         config, strategy, chunks, rows=int(embeddings.shape[0]), dim=int(embeddings.shape[1])
     )
+    return problems, f"{strategy}: {embeddings.shape[0]}x{embeddings.shape[1]}"
+
+
+def check_index(config: Config, records: list | None) -> Check:
+    strategy = config.get("chunking.active")
+    if records is None:
+        return Check(INDEX, FAIL, "No se puede verificar sin corpus")
+    if not embeddings_path(config, strategy).exists():
+        return Check(
+            INDEX,
+            FAIL,
+            f"Faltan los embeddings en {embeddings_path(config, strategy)}. "
+            f"Ejecuta `make index`.",
+        )
+    problems, described = _inspect(config, strategy, records)
     if problems:
         return Check(INDEX, FAIL, "; ".join(problems))
-    return Check(
-        INDEX,
-        OK,
-        f"estrategia {strategy}: {embeddings.shape[0]} vectores de dim {embeddings.shape[1]}, "
-        f"corresponde al corpus actual",
-    )
+    return Check(INDEX, OK, f"estrategia {described} vectores, corresponde al corpus actual")
+
+
+def check_ablation_indexes(config: Config, records: list | None) -> Check:
+    """La ablacion recorre varias estrategias. Sin todas indexadas revienta a
+    mitad de corrida, despues de minutos de trabajo, con un FileNotFoundError."""
+    needed: list[str] = config.get("evaluation.ablation.chunking_strategies")
+    if records is None:
+        return Check(ABLATION_INDEX, FAIL, "No se puede verificar sin corpus")
+    missing: list[str] = []
+    stale: list[str] = []
+    described: list[str] = []
+    for strategy in needed:
+        problems, description = _inspect(config, strategy, records)
+        if not problems:
+            described.append(description)
+        elif not embeddings_path(config, strategy).exists():
+            missing.append(strategy)
+        else:
+            stale.append(f"{strategy} ({problems[0]})")
+    if missing or stale:
+        detail = ""
+        if missing:
+            detail += f"sin indexar: {', '.join(missing)}. `make index` los construye todos. "
+        if stale:
+            detail += f"caducados: {'; '.join(stale)}"
+        return Check(ABLATION_INDEX, FAIL, detail.strip())
+    return Check(ABLATION_INDEX, OK, f"todas las estrategias de la ablacion ({', '.join(described)})")
 
 
 def check_golden_set(config: Config, records: list | None) -> Check:
@@ -158,6 +197,7 @@ def run(config: Config) -> list[Check]:
     return [
         corpus_check,
         check_index(config, records),
+        check_ablation_indexes(config, records),
         check_golden_set(config, records),
         check_serve_extra(),
         check_providers(config),

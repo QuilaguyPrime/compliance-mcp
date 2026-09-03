@@ -111,3 +111,27 @@ def test_una_comprobacion_inventada_es_error_de_uso(config):
 
     with pytest.raises(SystemExit):
         main(["--require", "no_existe"])
+
+
+def test_detecta_que_falta_un_indice_que_la_ablacion_necesita(config, records, indexed_repo, tmp_path):
+    """La ablacion recorre varias estrategias. Con solo la activa indexada
+    revienta a mitad de corrida, tras minutos de trabajo, con FileNotFoundError.
+    El preflight lo convierte en un fallo inmediato y accionable."""
+    # Se apunta el index_dir a un directorio con solo la estrategia activa.
+    import shutil
+
+    from compliance_mcp.doctor import ABLATION_INDEX, check_ablation_indexes
+
+    active = config.get("chunking.active")
+    src = config.path("corpus.index_dir")
+    shutil.copy(src / "manifest.json", tmp_path / "manifest.json")
+    for npy in src.glob(f"emb_{active}_*.npy"):
+        shutil.copy(npy, tmp_path / npy.name)
+
+    scoped = variant(config, lambda d: d["corpus"].__setitem__("index_dir", str(tmp_path)))
+    check = check_ablation_indexes(scoped, records)
+    assert check.status == FAIL
+    assert check.name == ABLATION_INDEX
+    assert "make index" in check.detail
+    # La estrategia servida sigue estando bien: son comprobaciones distintas.
+    assert check_index(scoped, records).status == OK

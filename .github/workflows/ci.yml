@@ -80,16 +80,18 @@ jobs:
           key: hf-${{ hashFiles('config.yaml') }}
 
       - name: Construir corpus e indice
+        # --all: la ablacion compara las tres estrategias de chunking, no solo
+        # la que se sirve. Sin esto la corrida muere a mitad buscando emb_A.
         run: |
           uv run python -m compliance_mcp.build_index ingest
-          uv run python -m compliance_mcp.build_index index
+          uv run python -m compliance_mcp.build_index index --all
 
       - name: Preflight
         # Aqui si hay indice: si estuviera caducado respecto al corpus, la
         # ablacion mediria un indice que no es el que se sirve. Se para antes.
         # Los proveedores no se exigen: en un PR desde un fork no hay secreto y
         # el gate de recuperacion tiene que poder correr igual.
-        run: uv run python -m compliance_mcp.doctor --require corpus,index,golden_set
+        run: uv run python -m compliance_mcp.doctor --require corpus,index,ablation_index,golden_set
 
       - name: Ablacion sobre el split de test
         run: uv run python -m compliance_mcp.eval.ablation --split test
