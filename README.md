@@ -305,6 +305,25 @@ name lives in the code, and the loader fails loudly on a missing key rather than
 falling back to a silent default: a silent fallback turns a configuration error
 into a wrong evaluation result.
 
+## Coherence tests
+
+Two tests in `tests/test_repo_coherence.py` check the repository against itself.
+The first is that every path the repo declares resolves to a file that exists:
+the corpus and golden-set inputs in `config.yaml`, the `COPY` sources in the
+Dockerfile, `build` and `env_file` in the compose file, `readme` and `packages`
+in `pyproject.toml`, the `make` targets both READMEs document, and their
+relative links. The second is that no committed artifact under `data/derived/`
+carries a `-dirty` git sha anywhere in its provenance.
+
+They exist because three separate failures during this project were the same
+shape: state that did not match what was declared, and nothing raised at the
+time. A stale index kept loading because the filename still matched after the
+text behind it had changed. An evaluation artifact was published from a dirty
+working tree, its own provenance recording the fact. A commit's Dockerfile
+copied files that commit's tree did not contain, so the image it introduced
+could not be built from it. A declaration that points at nothing is only found
+by checking it, so these run in CI with the rest of the suite.
+
 ## License
 
 MIT. Copyright (c) 2026 Juan Camilo Amaya Quilaguy. Full text in
