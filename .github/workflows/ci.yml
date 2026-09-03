@@ -66,7 +66,12 @@ jobs:
           cache-dependency-glob: pyproject.toml
 
       - name: Instalar dependencias (con indice denso y proveedores)
-        run: uv pip install --system -e ".[dense,serve,dev]"
+        # En un venv y no con --system: el Python del runner es "externally
+        # managed" (PEP 668) y rechaza la instalacion. Ademas es el mismo camino
+        # que `make install-serve`, asi que CI y local instalan igual.
+        run: |
+          uv venv --python 3.11
+          uv pip install -e ".[dense,serve,dev]"
 
       - name: Cachear el modelo de embeddings
         uses: actions/cache@v4
@@ -76,31 +81,31 @@ jobs:
 
       - name: Construir corpus e indice
         run: |
-          python -m compliance_mcp.build_index ingest
-          python -m compliance_mcp.build_index index
+          uv run python -m compliance_mcp.build_index ingest
+          uv run python -m compliance_mcp.build_index index
 
       - name: Preflight
         # Aqui si hay indice: si estuviera caducado respecto al corpus, la
         # ablacion mediria un indice que no es el que se sirve. Se para antes.
         # Los proveedores no se exigen: en un PR desde un fork no hay secreto y
         # el gate de recuperacion tiene que poder correr igual.
-        run: python -m compliance_mcp.doctor --require corpus,index,golden_set
+        run: uv run python -m compliance_mcp.doctor --require corpus,index,golden_set
 
       - name: Ablacion sobre el split de test
-        run: python -m compliance_mcp.eval.ablation --split test
+        run: uv run python -m compliance_mcp.eval.ablation --split test
 
       - name: Evaluacion de la generacion
         # Gasta API, asi que solo corre cuando hay clave. Inyecta su bloque
         # resumen en data/derived/ablation.json, que es donde lo busca el gate.
         # El baseline extractivo nunca se inyecta (ver eval/generation.py).
         if: env.ANTHROPIC_API_KEY != ''
-        run: python -m compliance_mcp.eval.generation --split test
+        run: uv run python -m compliance_mcp.eval.generation --split test
 
       - name: Gate
         # Los umbrales viven en `gates:` de config.yaml, no aqui: el criterio
         # de aceptacion se versiona junto al codigo que evalua. Si el paso
         # anterior no corrio, el gate solo hace cumplir la recuperacion.
-        run: python -m compliance_mcp.eval.gate
+        run: uv run python -m compliance_mcp.eval.gate
 
       - name: Publicar resultados de la evaluacion
         if: always()
