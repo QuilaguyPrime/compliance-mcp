@@ -14,7 +14,7 @@ from typing import Any
 from ..config import Config, load_config
 from ..ingest import read_records
 from ..observability import configure_logging, log_event, trace_context
-from ..provenance import provenance_block
+from ..provenance import DirtyTreeError, provenance_block, require_clean_tree
 from ..retrieval.search import METHODS, Retriever
 from .golden import GoldenCase, load_golden_set, split_cases, validate_against_corpus
 from .metrics import evaluate_retrieval
@@ -157,10 +157,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", choices=["train", "test", "all"], default="test")
     parser.add_argument("--config", default=None)
     parser.add_argument("--out", default=None)
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Producir el artefacto aunque el arbol tenga cambios. Queda marcado "
+             "con dirty=true en la procedencia y el gate de CI lo rechazara.",
+    )
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
     configure_logging(config)
+    # Antes de gastar una corrida entera: si el arbol esta sucio, estos numeros
+    # no se podran atribuir a ningun codigo concreto.
+    try:
+        require_clean_tree(allow_dirty=args.allow_dirty)
+    except DirtyTreeError as exc:
+        # Sin traza: esto no es una caida, es una negativa deliberada, y una
+        # traza invita a leerlo como un bug del programa.
+        print(f"FALLO: {exc}", file=sys.stderr)
+        return 1
     with trace_context():
         results = run(config, split=args.split)
 

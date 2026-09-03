@@ -14,6 +14,13 @@ def _with_provenance(results: dict, config) -> dict:
     from compliance_mcp.provenance import provenance_block
 
     results["provenance"] = provenance_block(config)
+    # Se fuerza limpio: estos tests miden umbrales de calidad, y sin esto
+    # fallarian o pasarian segun el arbol de quien ejecute la suite. El rechazo
+    # por suciedad tiene sus propios tests.
+    results["provenance"]["dirty"] = False
+    results["provenance"]["git_sha"] = str(results["provenance"]["git_sha"] or "").removesuffix(
+        "-dirty"
+    )
     return results
 
 

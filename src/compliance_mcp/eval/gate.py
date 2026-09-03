@@ -33,6 +33,17 @@ def check_provenance(results: dict[str, Any], config: Config) -> list[str]:
             )
         ]
     failures: list[str] = []
+    # Dos senales de suciedad, porque hay dos generaciones de artefactos: el
+    # campo booleano lo estampan los generadores actuales, y el sufijo del sha
+    # es como se marcaba antes de que existiera el campo. Un artefacto viejo
+    # tiene que seguir siendo rechazado.
+    sha = str(provenance.get("git_sha") or "")
+    if provenance.get("dirty") is True or sha.endswith("-dirty"):
+        failures.append(
+            "Los resultados se produjeron sobre un arbol con cambios sin commitear "
+            f"(git_sha={sha or 'desconocido'}), asi que no se puede saber que codigo "
+            "los produjo. Vuelve a correr la evaluacion desde un arbol limpio."
+        )
     current_corpus = corpus_digest(config)
     if provenance.get("corpus_digest") != current_corpus:
         failures.append(

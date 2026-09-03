@@ -40,7 +40,7 @@ from ..cost import compute as compute_cost
 from ..generation.engine import AnswerEngine
 from ..generation.schema import NOT_IN_CORPUS, VerifiedAnswer
 from ..observability import configure_logging, log_event, trace_context
-from ..provenance import provenance_block
+from ..provenance import DirtyTreeError, provenance_block, require_clean_tree
 from .golden import GoldenCase, load_golden_set, split_cases
 from .metrics import bootstrap_ci
 
@@ -295,10 +295,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", default=None, help="chain | anthropic | openai | extractive")
     parser.add_argument("--config", default=None)
     parser.add_argument("--out", default=None)
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Producir el artefacto aunque el arbol tenga cambios. Queda marcado "
+             "con dirty=true en la procedencia y el gate de CI lo rechazara.",
+    )
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
     configure_logging(config)
+    # Esta evaluacion gasta API: comprobar el arbol antes de la primera llamada.
+    try:
+        require_clean_tree(allow_dirty=args.allow_dirty)
+    except DirtyTreeError as exc:
+        # Sin traza: esto no es una caida, es una negativa deliberada, y una
+        # traza invita a leerlo como un bug del programa.
+        print(f"FALLO: {exc}", file=sys.stderr)
+        return 1
     results = run(config, split=args.split, provider=args.provider)
 
     out_path = Path(args.out) if args.out else config.path("evaluation.generation.output_path")

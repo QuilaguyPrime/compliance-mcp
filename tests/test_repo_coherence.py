@@ -158,19 +158,27 @@ def tracked_derived_artifacts() -> list[Path]:
     return [ROOT / p for p in result.stdout.split() if p.endswith(".json")]
 
 
-def git_shas(node, trail="") -> list[tuple[str, str]]:
-    """Todos los git_sha del documento, incluidos los de bloques anidados como
-    `generation`, que trae su propia procedencia."""
+def dirt_markers(node, trail="") -> list[tuple[str, str]]:
+    """Marcas de suciedad en cualquier profundidad del documento.
+
+    Son dos y hay que mirar las dos: el campo booleano `dirty`, que estampan los
+    generadores desde que existe `require_clean_tree`, y el sufijo `-dirty` del
+    `git_sha`, que es como se marcaba antes. Se recorre en profundidad porque el
+    bloque `generation` que inyecta la evaluacion trae su propia procedencia.
+    """
     found: list[tuple[str, str]] = []
     if isinstance(node, dict):
         for key, value in node.items():
-            if key == "git_sha" and isinstance(value, str):
-                found.append((f"{trail}.{key}".lstrip("."), value))
+            where = f"{trail}.{key}".lstrip(".")
+            if key == "git_sha" and isinstance(value, str) and value.endswith("-dirty"):
+                found.append((where, value))
+            elif key == "dirty" and value is True:
+                found.append((where, "true"))
             else:
-                found += git_shas(value, f"{trail}.{key}")
+                found += dirt_markers(value, f"{trail}.{key}")
     elif isinstance(node, list):
         for index, item in enumerate(node):
-            found += git_shas(item, f"{trail}[{index}]")
+            found += dirt_markers(item, f"{trail}[{index}]")
     return found
 
 
@@ -183,7 +191,8 @@ def test_ningun_artefacto_publicado_viene_de_un_arbol_sucio():
     """
     offenders: list[str] = []
     for path in tracked_derived_artifacts():
-        for field, sha in git_shas(json.loads(path.read_text(encoding="utf-8"))):
-            if sha.endswith("-dirty"):
-                offenders.append(f"{path.relative_to(ROOT)}: {field} = {sha}")
+        offenders += [
+            f"{path.relative_to(ROOT)}: {field} = {value}"
+            for field, value in dirt_markers(json.loads(path.read_text(encoding="utf-8")))
+        ]
     assert not offenders
