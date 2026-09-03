@@ -1,0 +1,41 @@
+# Contexto de build. Todo lo que no se copia explicitamente en el Dockerfile
+# sobra aqui: alarga el envio del contexto y arriesga meter en la imagen cosas
+# que no deberian estar.
+
+# Historia y CI
+.git
+.gitignore
+.github
+
+# Entornos y caches del host. El .venv local son ~950 MB de macOS que ademas
+# no valen para nada dentro de una imagen linux.
+.venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Secretos. Las claves entran por env_file en tiempo de ejecucion; una clave
+# copiada al contexto puede acabar en una capa y ahi se queda.
+.env
+.env.*
+!.env.example
+
+# Artefactos regenerables: la etapa builder los reconstruye desde data/raw. Si
+# entraran desde el host, la imagen serviria un indice del que nadie sabe de que
+# arbol salio, que es exactamente lo que este repo intenta impedir.
+data/processed/
+data/index/
+data/derived/
+
+# No hacen falta para construir ni para servir
+tests/
+README.es.md
+Dockerfile
+docker-compose.yml
+.dockerignore

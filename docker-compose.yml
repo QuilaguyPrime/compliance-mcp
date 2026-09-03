@@ -1,0 +1,45 @@
+# Las claves se leen de .env (copia .env.example). No se hornean en la imagen:
+# una clave en una capa se queda en la capa aunque se borre despues.
+
+services:
+  # Servidor MCP. El transporte es stdio: el cliente habla por la entrada y la
+  # salida estandar del proceso, asi que este servicio se usa con
+  #
+  #     docker compose run --rm compliance-mcp
+  #
+  # y NO con `docker compose up`. En `up` el contenedor arranca sin nadie
+  # conectado a stdin, recibe EOF y termina; parece que el servidor "se cae" y
+  # lo que pasa es que no hay cliente al otro lado.
+  compliance-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: compliance-mcp:0.1.0
+    env_file: [.env]
+    stdin_open: true
+    tty: false
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+
+  # Preflight. Mismo contenido de imagen, otro modulo: comprueba corpus, indice,
+  # golden set, extras y credenciales sin llamar a ninguna API.
+  #
+  #     docker compose run --rm doctor
+  #
+  # Sin claves en .env falla en la comprobacion `providers`, que es correcto:
+  # answer_question no puede responder sin proveedor. Para validar solo lo que
+  # no depende de credenciales:
+  #
+  #     docker compose run --rm doctor -m compliance_mcp.doctor \
+  #       --require corpus,index,ablation_index,golden_set,serve_extra
+  doctor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: compliance-mcp:0.1.0
+    env_file: [.env]
+    command: ["-m", "compliance_mcp.doctor"]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true

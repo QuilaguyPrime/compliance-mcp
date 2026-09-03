@@ -147,6 +147,41 @@ Three closures against that:
 
 ## How to run it
 
+### With Docker
+
+The image ingests the OSCAL catalog, builds the index, and bakes in the
+embedding model, so there is no setup step and no network access at run time.
+
+```bash
+cp .env.example .env                      # then fill in the keys
+docker compose build                      # ingest + index happen here
+docker compose run --rm doctor            # preflight, no network
+docker compose run --rm compliance-mcp    # MCP server over stdio
+```
+
+The transport is stdio, so the server is used with `docker compose run`, not
+`docker compose up`. Under `up` nothing is attached to stdin, the process reads
+EOF and exits; that looks like a crash and is not one.
+
+Registered in an MCP client:
+
+```json
+{
+  "mcpServers": {
+    "compliance": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--env-file", "/path/to/repo/.env",
+               "compliance-mcp:0.1.0"]
+    }
+  }
+}
+```
+
+The `-i` is not optional: without it the container gets no stdin and the MCP
+handshake never happens.
+
+### Locally
+
 ```bash
 make install-serve          # core + dense index + providers
 make ingest index           # OSCAL corpus -> records -> hybrid index
