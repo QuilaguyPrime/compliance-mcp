@@ -238,6 +238,23 @@ in `config.yaml`, which carry a verification date. A model with no declared
 price yields cost `None`, not zero: zero is a number, and it ends up summed into
 a total that looks measured.
 
+### What the CI gate actually enforces
+
+`min_recall_at_5` is 0.60 against a measured 0.8636. The slack is deliberate.
+With n=22 a single case is worth 0.0455 and the 95% interval runs from 0.7273 to
+1.0000, so a threshold set close to the measurement would fail on sampling noise
+every time one case moved, and a gate that fails while nothing is broken gets
+switched off. At 0.60 it detects catastrophic regression — a stale index, a
+misweighted fusion, a corpus that no longer matches — not marginal quality. For
+marginal quality the confidence intervals in `ablation.json` are the instrument.
+
+The strict gate is `min_citation_precision: 0.95` with
+`max_hallucinated_citation_rate: 0.0`, enforced on raw model output before the
+policy discards anything. Neither has ever run: both depend on the generation
+evaluation, which costs API spend and is still pending. A gate that cannot fail
+today is information rather than embarrassment — it states precisely which part
+of the system is measured and which is not.
+
 ### Which chunking strategy is served, and what that costs
 
 The served configuration is strategy C with hybrid retrieval

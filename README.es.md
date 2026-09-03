@@ -127,6 +127,23 @@ los precios de `config.yaml`, que llevan fecha de contraste. Un modelo sin
 precio declarado da coste `None`, no cero: cero es un numero y se acaba sumando
 a un total que parece medido.
 
+### Que hace cumplir de verdad el gate de CI
+
+`min_recall_at_5` esta en 0.60 frente a un 0.8636 medido, y la holgura es
+deliberada. Con n=22 un solo caso vale 0.0455 y el IC95 va de 0.7273 a 1.0000,
+asi que un umbral cenido a la medicion fallaria por ruido de muestreo cada vez
+que un caso cambiase de lado, y un gate que falla sin que nada se haya roto
+acaba desactivado. En 0.60 detecta regresion catastrofica -un indice caducado,
+una fusion mal ponderada, un corpus que no cuadra-, no calidad marginal. Para lo
+marginal estan los intervalos de confianza de `ablation.json`.
+
+El gate exigente es `min_citation_precision: 0.95` con
+`max_hallucinated_citation_rate: 0.0`, aplicados sobre la salida en bruto del
+modelo antes de que la politica descarte nada. Ninguno se ha ejecutado nunca:
+los dos dependen de la evaluacion de generacion, que gasta API y sigue
+pendiente. Un gate que hoy no puede fallar es informacion, no verguenza: dice
+con precision que parte del sistema esta medida y cual no.
+
 ### Lo que todavia no esta medido
 
 La cadena real de proveedores no se ha ejecutado nunca contra el golden set, asi

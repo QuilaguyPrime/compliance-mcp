@@ -199,7 +199,19 @@ evaluation:
 
 gates:
   # Umbrales que el job de eval de CI hace cumplir. Si el eval cae por debajo, falla.
+  #
+  # La holgura de min_recall_at_5 es deliberada. El valor medido es 0.8636 sobre
+  # n=22 casos, donde un solo caso vale 0.0455 y el IC95 va de 0.727 a 1.000. Un
+  # umbral cenido a la medicion (0.80, por ejemplo) fallaria por ruido de muestreo
+  # cada vez que un caso cambiase de lado, y un gate que falla sin que nada se haya
+  # roto se acaba desactivando. 0.60 es un detector de regresion catastrofica -un
+  # indice caducado, una fusion mal ponderada, un corpus que no cuadra-, no de
+  # calidad marginal. Para lo marginal estan los IC de ablation.json.
   min_recall_at_5: 0.60
+  # El gate exigente son estos dos, y no se han ejecutado nunca: dependen de la
+  # evaluacion de generacion, que gasta API y sigue pendiente (fase 5). Un gate que
+  # hoy no puede fallar es informacion, no verguenza: dice con precision que parte
+  # del sistema esta medida y cual no.
   min_citation_precision: 0.95
   max_hallucinated_citation_rate: 0.0
 
