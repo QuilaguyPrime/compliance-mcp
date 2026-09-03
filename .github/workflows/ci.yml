@@ -17,6 +17,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          # Este proyecto no usa uv.lock (se instala con `uv pip install -e`),
+          # y el glob por defecto de la accion es **/uv.lock: sin esto la accion
+          # falla por no encontrar fichero al que atar la cache.
+          cache-dependency-glob: pyproject.toml
 
       - name: Instalar dependencias
         # Sin el extra `dense`: los tests de fusion, metricas, filtros y rehuso
@@ -56,6 +60,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          # Este proyecto no usa uv.lock (se instala con `uv pip install -e`),
+          # y el glob por defecto de la accion es **/uv.lock: sin esto la accion
+          # falla por no encontrar fichero al que atar la cache.
+          cache-dependency-glob: pyproject.toml
 
       - name: Instalar dependencias (con indice denso y proveedores)
         run: uv pip install --system -e ".[dense,serve,dev]"
