@@ -139,6 +139,85 @@ def test_los_enlaces_relativos_de_los_readme_existen():
     assert not missing(declared)
 
 
+# ------------------------------------------------------- CI frente a local
+
+WORKFLOW = ".github/workflows/ci.yml"
+
+# `uv run` y `uv sync` resuelven el proyecto y ESCRIBEN uv.lock en la raiz. Ese
+# fichero no esta versionado, asi que ensucia el arbol y los generadores de
+# artefactos se niegan a producir numeros desde ahi. `uv venv` y `uv pip install`
+# no tienen ese efecto y siguen permitidos.
+FORBIDDEN_RUNNERS = ("uv run", "uv sync")
+INTERPRETER = ".venv/bin/python"
+
+
+def workflow_steps() -> list[tuple[str, str]]:
+    """(nombre del paso, comando) de cada `run:` del workflow."""
+    path = ROOT / WORKFLOW
+    if not path.exists():
+        pytest.skip("no hay workflow de CI")
+    data = yaml.safe_load(path.read_text())
+    return [
+        (f"{job}: {step.get('name', '?')}", step["run"])
+        for job, spec in (data.get("jobs") or {}).items()
+        for step in spec.get("steps", [])
+        if step.get("run")
+    ]
+
+
+def test_ci_no_usa_lanzadores_que_ensucian_el_arbol():
+    """Rompio una corrida entera, y el modo de fallo no era evidente.
+
+    CI invocaba con `uv run`, que escribe uv.lock, y el paso de ablacion aborto
+    con "el arbol tiene cambios sin commitear: uv.lock". El guardia acerto; lo
+    que fallaba era que CI y local no ejecutaban por el mismo camino.
+    """
+    offenders = [
+        f"{name}: usa `{runner}`  ({command.strip().splitlines()[0][:60]})"
+        for name, command in workflow_steps()
+        for runner in FORBIDDEN_RUNNERS
+        if runner in command
+    ]
+    assert not offenders
+
+
+def test_ci_invoca_el_mismo_interprete_que_el_makefile():
+    """Un solo modo de ejecutar el proyecto.
+
+    El comentario del workflow afirmaba que CI y local instalaban igual, y era
+    cierto; lo que no decia es que ejecutaban distinto, y ahi vivia el fallo.
+    Esto comprueba la divergencia, no su sintoma.
+
+    Limite conocido: cubre esta familia de lanzadores, no cualquier efecto
+    colateral imaginable. Un `poetry install` nuevo no lo veria.
+    """
+    offenders = [
+        f"{name}: {line.strip()[:70]}"
+        for name, command in workflow_steps()
+        for line in command.splitlines()
+        if "python -m " in line and INTERPRETER not in line
+    ]
+    assert not offenders
+
+
+def test_la_clave_de_cache_nombra_el_modelo_que_declara_la_config(config):
+    """La clave de cache del modelo tiene que seguir a `retrieval.dense.model`.
+
+    Antes hasheaba config.yaml entero, asi que un comentario invalidaba la cache
+    y costaba volver a bajar 419 MB. Nombrar el modelo lo arregla, pero crea una
+    invariante que solo vivia en un comentario: si el modelo cambia y la clave
+    no, CI serviria pesos cacheados de otro modelo. Aqui se hace cumplir.
+    """
+    path = ROOT / WORKFLOW
+    if not path.exists():
+        pytest.skip("no hay workflow de CI")
+    keys = re.findall(r"^\s*key:\s*(hf-\S+)\s*$", path.read_text(), re.MULTILINE)
+    if not keys:
+        pytest.skip("el workflow no cachea el modelo")
+    expected = f"hf-{config.get('retrieval.dense.model').split('/')[-1]}"
+    assert keys == [expected] * len(keys)
+
+
 # ------------------------------------------------------------------ procedencia
 
 

@@ -86,7 +86,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-${{ hashFiles('config.yaml') }}
+          # La clave nombra el modelo, no hashea config.yaml. Con el hash, tocar
+          # un comentario del fichero invalidaba la cache y obligaba a bajar de
+          # nuevo los 419 MB de pesos: paso, y ese paso tardo 21 minutos. Lo que
+          # decide que hay en ~/.cache/huggingface es `retrieval.dense.model`, y
+          # si cambia hay que cambiar esta clave con el.
+          key: hf-bge-base-en-v1.5
 
       - name: Construir corpus e indice
         # --all: la ablacion compara las tres estrategias de chunking, no solo
