@@ -95,14 +95,14 @@ def test_gate_rejects_results_from_another_corpus(config):
     results = _provenanced(config)
     results["provenance"]["corpus_digest"] = "sha256:" + "0" * 64
     failures = check(results, config)
-    assert any("otro corpus" in f for f in failures)
+    assert any(f.startswith("corpus_digest") for f in failures)
 
 
 def test_gate_rejects_results_from_another_configuration(config):
     results = _provenanced(config)
     results["provenance"]["config_digest"] = "sha256:" + "0" * 64
     failures = check(results, config)
-    assert any("otra configuracion" in f for f in failures)
+    assert any(f.startswith("config_digest") for f in failures)
 
 
 def test_gate_accepts_freshly_produced_results(config):

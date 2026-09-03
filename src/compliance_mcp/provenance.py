@@ -157,6 +157,73 @@ def corpus_digest(config: Config) -> str:
 # cualquiera, el indice construido antes ya no corresponde.
 INDEX_CONFIG_KEYS = ["ingest", "chunking"]
 
+# Secciones que determinan los NUMEROS de una evaluacion publicable. Incluye
+# `evaluation` y no solo lo que afecta al indice: las semillas de split y de
+# bootstrap, los k de recall y ndcg viven ahi y mueven cada cifra de la tabla.
+# Sin ellas, cambiar `evaluation.bootstrap.seed` y no volver a correr dejaba el
+# gate en verde con numeros que ya no correspondian al arbol.
+RESULT_CONFIG_KEYS = [*INDEX_CONFIG_KEYS, "retrieval", "evaluation"]
+
+# Raiz del codigo que produce los resultados.
+CODE_ROOT = "src"
+
+
+def _normalized_source(path: Path) -> bytes:
+    """Bytes del fichero con finales de linea normalizados.
+
+    Un clon en Windows con `core.autocrlf` entrega los mismos ficheros con otros
+    bytes. Sin normalizar, el digest diria que el codigo es distinto sin que
+    nadie haya cambiado una linea: un fallo que no se ve venir y que convierte
+    la comprobacion en ruido hasta que alguien la desactiva.
+    """
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
+def code_digest() -> str:
+    """Fingerprint del codigo que produce los resultados.
+
+    Se hashea `src/` entero y no solo los modulos que importa cada arnes.
+    Sobre-incluir cuesta volver a correr; infra-incluir cuesta publicar numeros
+    de otro codigo, y ademas un import indirecto anadido despues dejaria de
+    estar cubierto sin que nadie se entere.
+
+    Es lo que el `git_sha` no puede dar: commitear el artefacto crea un commit
+    nuevo, pero no cambia ningun `.py`, asi que este digest vale igual antes y
+    despues. El artefacto identifica su codigo con independencia del commit en
+    el que aterrice.
+
+    Deliberadamente FUERA: las versiones de las dependencias. `pyproject.toml`
+    declara rangos, no versiones fijas, asi que hashearlo daria confianza falsa
+    -el mismo fichero instala librerias distintas en dos maquinas-. El
+    instrumento correcto seria un lockfile y este repo no tiene ninguno.
+    """
+    root = project_root() / CODE_ROOT
+    if not root.is_dir():
+        raise FileNotFoundError(
+            f"No existe {root}: el digest de codigo necesita el arbol de fuentes. "
+            "Una instalacion no editable deja project_root() dentro del venv."
+        )
+    sources = sorted(
+        (p for p in root.rglob("*.py") if "__pycache__" not in p.parts),
+        key=lambda p: p.relative_to(project_root()).as_posix(),
+    )
+    parts: list[bytes] = []
+    for path in sources:
+        # La ruta entra en el hash: renombrar un modulo tiene que cambiarlo.
+        parts.append(path.relative_to(project_root()).as_posix().encode("utf-8"))
+        parts.append(_normalized_source(path))
+    return _digest(parts)
+
+
+def golden_digest(config: Config) -> str:
+    """Fingerprint del golden set, que es el instrumento de medida.
+
+    Va aparte del codigo a proposito: cambiar una pregunta o un
+    `relevant_control` mueve toda la tabla, y separandolo el gate puede decir
+    que cambio exactamente en vez de un generico "no cuadra".
+    """
+    return digest_file(config.path("evaluation.golden_set_path"))
+
 
 def provenance_block(config: Config) -> dict[str, Any]:
     """Bloque que se adjunta a todo resultado publicable.
@@ -174,6 +241,8 @@ def provenance_block(config: Config) -> dict[str, Any]:
         "dirty": state.dirty,
         "generated_at": now_iso(),
         "corpus_digest": corpus_digest(config),
-        "config_digest": digest_config(config, INDEX_CONFIG_KEYS + ["retrieval"]),
+        "config_digest": digest_config(config, RESULT_CONFIG_KEYS),
+        "golden_digest": golden_digest(config),
+        "code_digest": code_digest(),
         "embedding_model": config.get("retrieval.dense.model"),
     }

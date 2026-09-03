@@ -14,7 +14,13 @@ from typing import Any
 
 from ..config import Config, load_config
 from ..observability import configure_logging, log_event
-from ..provenance import INDEX_CONFIG_KEYS, corpus_digest, digest_config
+from ..provenance import (
+    RESULT_CONFIG_KEYS,
+    code_digest,
+    corpus_digest,
+    digest_config,
+    golden_digest,
+)
 
 
 def check_provenance(results: dict[str, Any], config: Config) -> list[str]:
@@ -44,19 +50,48 @@ def check_provenance(results: dict[str, Any], config: Config) -> list[str]:
             f"(git_sha={sha or 'desconocido'}), asi que no se puede saber que codigo "
             "los produjo. Vuelve a correr la evaluacion desde un arbol limpio."
         )
-    current_corpus = corpus_digest(config)
-    if provenance.get("corpus_digest") != current_corpus:
-        failures.append(
-            "Los resultados se produjeron con otro corpus "
-            f"({str(provenance.get('corpus_digest'))[:19]}... frente al actual "
-            f"{current_corpus[:19]}...). Vuelve a correr la evaluacion."
-        )
-    current_config = digest_config(config, INDEX_CONFIG_KEYS + ["retrieval"])
-    if provenance.get("config_digest") != current_config:
-        failures.append(
-            "Los resultados se produjeron con otra configuracion de ingest, chunking o "
-            "recuperacion. Vuelve a correr la evaluacion."
-        )
+    # Un fallo que solo diga "procedencia incoherente" obliga a investigar. Se
+    # comparan los tres por separado y se nombra el que no cuadra, para que el
+    # mensaje lleve directo a lo que cambio.
+    checks = [
+        (
+            "corpus_digest",
+            corpus_digest(config),
+            "el corpus ingerido es otro",
+        ),
+        (
+            "config_digest",
+            digest_config(config, RESULT_CONFIG_KEYS),
+            (
+                "cambio la configuracion de ingest, chunking, recuperacion o evaluacion "
+                "(las semillas de split y bootstrap viven ahi y mueven cada cifra)"
+            ),
+        ),
+        (
+            "golden_digest",
+            golden_digest(config),
+            "el golden set es otro, y es el instrumento de medida",
+        ),
+        (
+            "code_digest",
+            code_digest(),
+            "el codigo de src/ es otro",
+        ),
+    ]
+    for field, current, reason in checks:
+        recorded = provenance.get(field)
+        if recorded is None:
+            failures.append(
+                f"Los resultados no llevan {field}: se produjeron con una version anterior "
+                "del bloque de procedencia y no se puede comprobar. Vuelve a correr la "
+                "evaluacion."
+            )
+        elif recorded != current:
+            failures.append(
+                f"{field} no cuadra con el arbol actual: {reason} "
+                f"({str(recorded)[7:19]}... frente a {current[7:19]}...). "
+                "Vuelve a correr la evaluacion."
+            )
     return failures
 
 

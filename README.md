@@ -140,6 +140,27 @@ Three closures against that:
   gate compares that provenance against the current tree and rejects results
   from a different corpus or config: an old committed `ablation.json` no longer
   passes the gate without having measured anything.
+* **What each digest covers.** `corpus_digest` fingerprints the ingested
+  records. `config_digest` fingerprints the config sections that move the
+  numbers — `ingest`, `chunking`, `retrieval` and `evaluation`, the last of
+  which holds the split and bootstrap seeds. `golden_digest` fingerprints the
+  golden set, which is the measuring instrument. `code_digest` fingerprints
+  every `.py` under `src/`, with line endings normalised so a Windows checkout
+  does not read as different code. The gate compares all four against the
+  working tree and names the one that fails, because a failure that only says
+  "provenance mismatch" leaves you to find out which.
+* **What the digests deliberately do not cover.** Dependency versions.
+  `pyproject.toml` declares ranges rather than pins, so hashing it would assert
+  more than it can support: the same file installs different versions of
+  `sentence-transformers` on two machines and produces different embeddings.
+  The correct instrument is a lock file and this repository does not have one —
+  the flank is open, and stated here rather than left to be discovered.
+* **Why `code_digest` and not just the commit.** An artifact under
+  `data/derived/` is versioned, so committing it creates a commit the artifact
+  cannot name: it records the commit it was produced at, which is the parent of
+  the one that contains it. `code_digest` does not have that problem, because
+  writing a JSON file changes no `.py`. The commit sha stays as the human
+  pointer into history; the digest is what the gate enforces.
 * **Preflight** (`make doctor`). Checks corpus, index freshness, golden set
   consistency, installed extras, and credential presence, without calling any
   API. `--require` narrows which checks decide the exit code, so each CI job

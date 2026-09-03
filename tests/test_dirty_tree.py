@@ -136,18 +136,15 @@ def test_la_procedencia_de_un_arbol_limpio_no_la_marca(monkeypatch, config):
 
 
 def clean_provenance(config: Config) -> dict:
-    from compliance_mcp.provenance import (
-        INDEX_CONFIG_KEYS,
-        corpus_digest,
-        digest_config,
-    )
+    """Procedencia real del arbol, forzada a limpia.
 
-    return {
-        "git_sha": SHA,
-        "dirty": False,
-        "corpus_digest": corpus_digest(config),
-        "config_digest": digest_config(config, INDEX_CONFIG_KEYS + ["retrieval"]),
-    }
+    Se parte del bloque de verdad y no de un diccionario a mano: asi anadir un
+    digest nuevo no deja estos tests pasando contra una procedencia incompleta,
+    que es como se colaria un hueco de cobertura sin que nadie lo note.
+    """
+    from compliance_mcp.provenance import provenance_block
+
+    return {**provenance_block(config), "git_sha": SHA, "dirty": False}
 
 
 def test_el_gate_acepta_procedencia_limpia(config):
@@ -182,7 +179,7 @@ def test_el_gate_sigue_rechazando_otro_corpus(config):
     provenance_data = clean_provenance(config)
     provenance_data["corpus_digest"] = "sha256:" + "0" * 64
     failures = check_provenance({"provenance": provenance_data}, config)
-    assert any("otro corpus" in f for f in failures)
+    assert any(f.startswith("corpus_digest") for f in failures)
 
 
 def test_un_arbol_sucio_no_contamina_una_config_valida(config):
