@@ -27,22 +27,29 @@ jobs:
         # no necesitan modelo de embeddings, asi que este job no descarga torch.
         # Con `serve`: mcp, anthropic y openai son puros de Python y no arrastran
         # torch, asi que los tests del servidor corren aqui en vez de saltarse.
-        run: uv sync --extra dev --extra serve || uv pip install --system -e ".[dev,serve]"
+        #
+        # En un venv explicito y no con `uv sync`: sync resuelve el proyecto y
+        # ESCRIBE uv.lock en la raiz. Ese fichero no esta versionado, asi que
+        # ensucia el arbol de trabajo, y los generadores de artefactos se niegan
+        # a producir numeros desde un arbol sucio. Ver el paso de ablacion.
+        run: |
+          uv venv --python 3.11
+          uv pip install -e ".[dev,serve]"
 
       - name: Lint
-        run: uv run ruff check src tests
+        run: .venv/bin/python -m ruff check src tests
 
       - name: Ingest del catalogo
-        run: uv run python -m compliance_mcp.build_index ingest
+        run: .venv/bin/python -m compliance_mcp.build_index ingest
 
       - name: Preflight
         # Se exige solo lo que este job tiene: no construye indice denso ni usa
         # proveedores. Lo demas se informa pero no decide el resultado, asi que
         # esto es un gate de verdad y no un `|| true` decorativo.
-        run: uv run python -m compliance_mcp.doctor --require corpus,golden_set
+        run: .venv/bin/python -m compliance_mcp.doctor --require corpus,golden_set
 
       - name: pytest
-        run: uv run pytest --cov=compliance_mcp --cov-report=term-missing
+        run: .venv/bin/python -m pytest --cov=compliance_mcp --cov-report=term-missing
 
   eval-gate:
     name: Gate de evaluacion
@@ -68,7 +75,9 @@ jobs:
       - name: Instalar dependencias (con indice denso y proveedores)
         # En un venv y no con --system: el Python del runner es "externally
         # managed" (PEP 668) y rechaza la instalacion. Ademas es el mismo camino
-        # que `make install-serve`, asi que CI y local instalan igual.
+        # que `make install-serve`, asi que CI y local instalan igual, y todo lo
+        # que sigue se invoca con .venv/bin/python igual que en el Makefile: asi
+        # tambien EJECUTAN igual, no solo instalan.
         run: |
           uv venv --python 3.11
           uv pip install -e ".[dense,serve,dev]"
@@ -83,31 +92,31 @@ jobs:
         # --all: la ablacion compara las tres estrategias de chunking, no solo
         # la que se sirve. Sin esto la corrida muere a mitad buscando emb_A.
         run: |
-          uv run python -m compliance_mcp.build_index ingest
-          uv run python -m compliance_mcp.build_index index --all
+          .venv/bin/python -m compliance_mcp.build_index ingest
+          .venv/bin/python -m compliance_mcp.build_index index --all
 
       - name: Preflight
         # Aqui si hay indice: si estuviera caducado respecto al corpus, la
         # ablacion mediria un indice que no es el que se sirve. Se para antes.
         # Los proveedores no se exigen: en un PR desde un fork no hay secreto y
         # el gate de recuperacion tiene que poder correr igual.
-        run: uv run python -m compliance_mcp.doctor --require corpus,index,ablation_index,golden_set
+        run: .venv/bin/python -m compliance_mcp.doctor --require corpus,index,ablation_index,golden_set
 
       - name: Ablacion sobre el split de test
-        run: uv run python -m compliance_mcp.eval.ablation --split test
+        run: .venv/bin/python -m compliance_mcp.eval.ablation --split test
 
       - name: Evaluacion de la generacion
         # Gasta API, asi que solo corre cuando hay clave. Inyecta su bloque
         # resumen en data/derived/ablation.json, que es donde lo busca el gate.
         # El baseline extractivo nunca se inyecta (ver eval/generation.py).
         if: env.ANTHROPIC_API_KEY != ''
-        run: uv run python -m compliance_mcp.eval.generation --split test
+        run: .venv/bin/python -m compliance_mcp.eval.generation --split test
 
       - name: Gate
         # Los umbrales viven en `gates:` de config.yaml, no aqui: el criterio
         # de aceptacion se versiona junto al codigo que evalua. Si el paso
         # anterior no corrio, el gate solo hace cumplir la recuperacion.
-        run: uv run python -m compliance_mcp.eval.gate
+        run: .venv/bin/python -m compliance_mcp.eval.gate
 
       - name: Publicar resultados de la evaluacion
         if: always()
