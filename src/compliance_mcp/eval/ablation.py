@@ -14,6 +14,7 @@ from typing import Any
 from ..config import Config, load_config
 from ..ingest import read_records
 from ..observability import configure_logging, log_event, trace_context
+from ..provenance import provenance_block
 from ..retrieval.search import METHODS, Retriever
 from .golden import GoldenCase, load_golden_set, split_cases, validate_against_corpus
 from .metrics import evaluate_retrieval
@@ -99,6 +100,9 @@ def run(config: Config, *, split: str = "test") -> dict[str, Any]:
 
     results: dict[str, Any] = {
         "split": split,
+        # Sin procedencia, una tabla de resultados es un numero sin sujeto: no
+        # se sabe de que corpus, que config ni que commit salio.
+        "provenance": provenance_block(config),
         "n_cases_total": len(selected),
         "n_cases_scorable": sum(1 for c in selected if c.scorable_for_retrieval),
         "config": {

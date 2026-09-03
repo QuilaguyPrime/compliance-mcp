@@ -11,6 +11,9 @@ corpus:
   records_path: data/processed/records.jsonl
   chunks_dir: data/processed
   index_dir: data/index
+  # Manifiesto que certifica de que texto salio cada indice denso. Cargar un
+  # indice sin manifiesto, o con uno que no cuadra, es un error duro.
+  index_manifest: data/index/manifest.json
 
 ingest:
   # Los placeholders {{ insert: param }} anidan dentro de select.choice.
@@ -73,10 +76,84 @@ retrieval:
     # Corrige que 872 enhancements desplacen a 324 controles base.
     enabled: true
     alpha: 0.8
+  # Metodo servido en produccion y celda que el gate hace cumplir.
+  method: hybrid
   top_k: 5
   max_top_k: 20
   # Por defecto search_controls oculta los retirados; get_control siempre los devuelve.
   default_include_withdrawn: false
+
+generation:
+  # Cadena de proveedores: se intentan en orden y se cae al siguiente ante
+  # cualquier fallo del anterior. La degradacion se loguea con el trace_id, de
+  # modo que en los logs se puede separar "respondio el primario" de "respondio
+  # el fallback" sin mirar la respuesta.
+  providers:
+    - name: anthropic
+      model: claude-opus-5
+      max_tokens: 4096
+      # low | medium | high | xhigh | max. La tarea es extractiva sobre un
+      # contexto ya recuperado, no un problema de razonamiento abierto.
+      effort: medium
+      timeout_s: 60
+      max_retries: 2
+    - name: openai
+      model: gpt-4o-2024-08-06
+      max_tokens: 4096
+      timeout_s: 60
+      max_retries: 2
+  # Precio de lista en USD por millon de tokens, por modelo. Vive aqui y no en
+  # el codigo por la misma razon que todo lo demas, y ademas porque cambia sin
+  # avisar: un precio incrustado en el codigo se queda viejo en silencio y
+  # convierte el coste por consulta publicado en ficcion.
+  #
+  # `checked_at` es la fecha en que se contrastaron con el proveedor. Si esta
+  # vieja, el coste calculado es una estimacion con fecha de caducidad, y el
+  # informe lo dice en vez de presentarlo como medido.
+  pricing:
+    checked_at: "2026-09-02"
+    usd_per_mtok:
+      claude-opus-5:
+        input: 5.00
+        output: 25.00
+      gpt-4o-2024-08-06:
+        input: 2.50
+        output: 10.00
+  # Baseline determinista y sin red. No sustituye al LLM: es el suelo contra el
+  # que se compara en la evaluacion y el doble que usan los tests, para que la
+  # suite corra sin claves de API.
+  baseline_provider: extractive
+  context:
+    # Cuantos controles recuperados entran en el prompt.
+    top_k: 5
+    # Partes del registro que ve el modelo. Es tambien el universo de lo
+    # citable: la verificacion compara contra exactamente este texto, no contra
+    # el registro completo, para que citar de memoria parametrica no cuele.
+    parts: [statement, guidance]
+    # Corte por parte. Se corta en frontera de linea para no partir un item
+    # numerado del statement por la mitad.
+    max_part_chars: 4000
+  citations:
+    # Una cita mas corta que esto no ancla nada: "the organization" aparece
+    # literalmente en cientos de controles.
+    min_quote_chars: 24
+    max_quote_chars: 400
+    # Politica ante una cita que no se puede verificar contra el contexto.
+    on_unverified: drop
+    # Si tras descartar no queda ninguna cita verificada, la respuesta se
+    # convierte en rehuso. Esto es lo que hace que la tasa de citas alucinadas
+    # SERVIDAS sea cero por construccion, en vez de por confiar en el modelo.
+    refuse_without_citations: true
+    # Toda etiqueta tipo [AC-2] que aparezca en la prosa debe corresponder a una
+    # cita verificada; si no, la respuesta no se sirve.
+    require_inline_refs_verified: true
+  # Normalizacion aplicada a los dos lados antes de comparar una cita literal.
+  # Sin colapsar espacios, un salto de linea del aplanado del statement basta
+  # para que una cita correcta se marque como inventada.
+  quote_match:
+    collapse_whitespace: true
+    casefold: true
+    strip_chars: " \t\n\"'.,;:()[]"
 
 evaluation:
   golden_set_path: data/golden/golden_set.yaml
@@ -103,6 +180,22 @@ evaluation:
     rrf_k: [30, 60, 120]
     parent_rollup_alpha: [0.0, 0.5, 0.8]
     output_path: data/derived/sweep.json
+
+  generation:
+    output_path: data/derived/generation.json
+    # El bloque resumen se inyecta ademas en el fichero de la ablacion para que
+    # el gate de CI lo lea sin cambiar de ruta ni de contrato.
+    merge_into_ablation: true
+    # chain = cadena real de proveedores (gasta API). extractive = baseline.
+    provider: chain
+    # Unidades que convierten un numero en una cantidad afirmada. Se usa para
+    # detectar cifras que la respuesta afirma sin que aparezcan en ninguna cita
+    # verificada: en Rev 5 casi todo periodo y umbral es definido por la
+    # organizacion, asi que una cifra sin fuente es la alucinacion tipica.
+    quantity_units:
+      [second, seconds, minute, minutes, hour, hours, day, days, week, weeks,
+       month, months, year, years, character, characters, attempt, attempts,
+       bit, bits, percent, time, times]
 
 gates:
   # Umbrales que el job de eval de CI hace cumplir. Si el eval cae por debajo, falla.

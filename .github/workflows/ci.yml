@@ -21,7 +21,9 @@ jobs:
       - name: Instalar dependencias
         # Sin el extra `dense`: los tests de fusion, metricas, filtros y rehuso
         # no necesitan modelo de embeddings, asi que este job no descarga torch.
-        run: uv sync --extra dev || uv pip install --system -e ".[dev]"
+        # Con `serve`: mcp, anthropic y openai son puros de Python y no arrastran
+        # torch, asi que los tests del servidor corren aqui en vez de saltarse.
+        run: uv sync --extra dev --extra serve || uv pip install --system -e ".[dev,serve]"
 
       - name: Lint
         run: uv run ruff check src tests
@@ -29,12 +31,24 @@ jobs:
       - name: Ingest del catalogo
         run: uv run python -m compliance_mcp.build_index ingest
 
+      - name: Preflight
+        # Se exige solo lo que este job tiene: no construye indice denso ni usa
+        # proveedores. Lo demas se informa pero no decide el resultado, asi que
+        # esto es un gate de verdad y no un `|| true` decorativo.
+        run: uv run python -m compliance_mcp.doctor --require corpus,golden_set
+
       - name: pytest
         run: uv run pytest --cov=compliance_mcp --cov-report=term-missing
 
   eval-gate:
     name: Gate de evaluacion
     runs-on: ubuntu-latest
+    # A nivel de job para poder condicionar el paso de generacion a que la clave
+    # exista: sin secreto (p.ej. en un PR desde un fork) se corre el gate de
+    # recuperacion y se omite el de generacion, en vez de fallar el workflow.
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,8 +57,8 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Instalar dependencias (con indice denso)
-        run: uv pip install --system -e ".[dense,dev]"
+      - name: Instalar dependencias (con indice denso y proveedores)
+        run: uv pip install --system -e ".[dense,serve,dev]"
 
       - name: Cachear el modelo de embeddings
         uses: actions/cache@v4
@@ -57,12 +71,27 @@ jobs:
           python -m compliance_mcp.build_index ingest
           python -m compliance_mcp.build_index index
 
+      - name: Preflight
+        # Aqui si hay indice: si estuviera caducado respecto al corpus, la
+        # ablacion mediria un indice que no es el que se sirve. Se para antes.
+        # Los proveedores no se exigen: en un PR desde un fork no hay secreto y
+        # el gate de recuperacion tiene que poder correr igual.
+        run: python -m compliance_mcp.doctor --require corpus,index,golden_set
+
       - name: Ablacion sobre el split de test
         run: python -m compliance_mcp.eval.ablation --split test
 
+      - name: Evaluacion de la generacion
+        # Gasta API, asi que solo corre cuando hay clave. Inyecta su bloque
+        # resumen en data/derived/ablation.json, que es donde lo busca el gate.
+        # El baseline extractivo nunca se inyecta (ver eval/generation.py).
+        if: env.ANTHROPIC_API_KEY != ''
+        run: python -m compliance_mcp.eval.generation --split test
+
       - name: Gate
         # Los umbrales viven en `gates:` de config.yaml, no aqui: el criterio
-        # de aceptacion se versiona junto al codigo que evalua.
+        # de aceptacion se versiona junto al codigo que evalua. Si el paso
+        # anterior no corrio, el gate solo hace cumplir la recuperacion.
         run: python -m compliance_mcp.eval.gate
 
       - name: Publicar resultados de la evaluacion

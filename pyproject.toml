@@ -18,9 +18,12 @@ dependencies = [
 dense = [
     "sentence-transformers>=3.0",
 ]
+# El servidor y los proveedores. Verificado contra mcp 2.1, anthropic 1.3 y
+# openai 3.7. `mcp>=2` no es cosmetico: en 2.x FastMCP paso a llamarse
+# MCPServer y el modelo de datos paso a snake_case.
 serve = [
-    "mcp>=1.2",
-    "anthropic>=0.40",
+    "mcp>=2.0",
+    "anthropic>=1.0",
     "openai>=1.50",
 ]
 dev = [
@@ -31,6 +34,8 @@ dev = [
 
 [project.scripts]
 compliance-mcp = "compliance_mcp.server:main"
+# Preflight sin red: comprueba corpus, indice, golden set y credenciales.
+compliance-mcp-doctor = "compliance_mcp.doctor:main"
 
 [build-system]
 requires = ["hatchling"]

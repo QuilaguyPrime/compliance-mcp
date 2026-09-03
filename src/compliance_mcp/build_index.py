@@ -15,6 +15,7 @@ import numpy as np
 
 from .chunking import chunk_records
 from .config import Config, load_config
+from .index_manifest import build_entry, write_entry
 from .ingest import build_records, read_records, write_records
 from .observability import configure_logging, log_event, trace_context
 from .retrieval.dense import DenseRetriever
@@ -58,6 +59,11 @@ def do_index(config: Config, strategies: list[str]) -> None:
         embeddings = DenseRetriever.encode_corpus([c.text for c in chunks], config)
         out = embeddings_path(config, strategy)
         np.save(out, embeddings)
+        # El manifiesto se escribe DESPUES del .npy: si el encode falla a medias,
+        # queda un indice sin manifiesto (que se rechaza al cargar) en vez de un
+        # manifiesto que certifica un indice que no existe.
+        entry = build_entry(config, strategy, chunks, int(embeddings.shape[1]), out)
+        manifest = write_entry(config, entry)
         log_event(
             "index.built",
             strategy=strategy,
@@ -65,8 +71,10 @@ def do_index(config: Config, strategies: list[str]) -> None:
             unique_controls=len({c.control_id for c in chunks}),
             dim=int(embeddings.shape[1]),
             model=config.get("retrieval.dense.model"),
+            chunks_digest=entry.chunks_digest,
             encode_ms=round((time.perf_counter() - start) * 1000, 1),
             path=str(out),
+            manifest=str(manifest),
         )
 
 

@@ -9,6 +9,7 @@ import numpy as np
 
 from ..chunking import Chunk, chunk_records
 from ..config import Config
+from ..index_manifest import verify as verify_index
 from ..ingest import ControlRecord, read_records
 from ..observability import StageTimings, stage
 from .dense import DenseRetriever
@@ -113,6 +114,9 @@ class Retriever:
             embeddings = DenseRetriever.from_file(
                 embeddings_path(config, strategy), config
             )._embeddings
+            # Un indice caducado no da error al usarse: da resultados peores en
+            # silencio. Se comprueba aqui, una vez, antes de servir nada.
+            verify_index(config, strategy, chunks, embeddings)
         return cls(records, chunks, config, embeddings)
 
     # --------------------------------------------------------------- busqueda

@@ -14,13 +14,46 @@ from typing import Any
 
 from ..config import Config, load_config
 from ..observability import configure_logging, log_event
+from ..provenance import INDEX_CONFIG_KEYS, corpus_digest, digest_config
+
+
+def check_provenance(results: dict[str, Any], config: Config) -> list[str]:
+    """Los resultados tienen que venir del corpus y la config de ahora.
+
+    Un fichero de resultados commiteado de una corrida anterior pasa el gate sin
+    haber medido nada de lo que hay en el arbol. Es la misma familia de verde
+    vacuo que sembrar el gate con el baseline.
+    """
+    provenance = results.get("provenance")
+    if provenance is None:
+        return [
+            (
+                "Los resultados no llevan bloque de procedencia: no se puede saber de que "
+                "corpus ni de que configuracion salieron. Vuelve a correr la evaluacion."
+            )
+        ]
+    failures: list[str] = []
+    current_corpus = corpus_digest(config)
+    if provenance.get("corpus_digest") != current_corpus:
+        failures.append(
+            "Los resultados se produjeron con otro corpus "
+            f"({str(provenance.get('corpus_digest'))[:19]}... frente al actual "
+            f"{current_corpus[:19]}...). Vuelve a correr la evaluacion."
+        )
+    current_config = digest_config(config, INDEX_CONFIG_KEYS + ["retrieval"])
+    if provenance.get("config_digest") != current_config:
+        failures.append(
+            "Los resultados se produjeron con otra configuracion de ingest, chunking o "
+            "recuperacion. Vuelve a correr la evaluacion."
+        )
+    return failures
 
 
 def check(results: dict[str, Any], config: Config) -> list[str]:
-    failures: list[str] = []
+    failures: list[str] = check_provenance(results, config)
 
     strategy = config.get("chunking.active")
-    method = "hybrid"
+    method = config.get("retrieval.method")
     cell = results.get("grid", {}).get(strategy, {}).get(method)
     if cell is None:
         return [f"La ablacion no contiene la celda {strategy}/{method}"]
@@ -35,10 +68,16 @@ def check(results: dict[str, Any], config: Config) -> list[str]:
             f"({strategy}/{method}, n={cell.get('n')})"
         )
 
-    # Las metricas de generacion se anaden en la fase 3; el gate ya las contempla
-    # para que anadirlas no requiera tocar CI.
     generation = results.get("generation")
     if generation:
+        # El baseline extractivo saca precision 1.0 y alucinacion 0.0 porque
+        # copia, no porque acierte. Aceptarlo como evidencia dejaria el gate en
+        # verde sin haber medido al generador que se sirve.
+        if generation.get("provider") == config.get("generation.baseline_provider"):
+            failures.append(
+                "El bloque de generacion procede del baseline "
+                f"'{generation['provider']}'; no es evidencia sobre el sistema servido"
+            )
         precision = generation.get("citation_precision")
         min_precision = config.get("gates.min_citation_precision")
         if precision is not None and precision < min_precision:
@@ -77,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     failures = check(results, config)
 
     strategy = config.get("chunking.active")
-    cell = results.get("grid", {}).get(strategy, {}).get("hybrid", {})
+    cell = results.get("grid", {}).get(strategy, {}).get(config.get("retrieval.method"), {})
     log_event(
         "gate.evaluated",
         passed=not failures,
