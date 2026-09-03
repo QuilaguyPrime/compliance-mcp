@@ -255,6 +255,13 @@ recall@5, while A leads on recall@1, MRR, and nDCG@10 — the three metrics that
 reward putting the right control at the top rather than merely inside the
 window.
 
+**The mechanism is chunk granularity.** A emits one chunk per control, 1196 in
+total; C splits each control by part and emits 2210. More and smaller units give
+a query more distinct surfaces to match, which is what lifts the chance that the
+right control lands somewhere inside the window. The ablation does not isolate
+why the same split costs rank precision, so that direction is observed rather
+than explained.
+
 Choosing C follows from what the retrieval feeds. `generation.context.top_k` is
 5, so all five retrieved controls are placed in the context in full; whether the
 right one arrived first or fourth changes nothing about what the model can cite.
