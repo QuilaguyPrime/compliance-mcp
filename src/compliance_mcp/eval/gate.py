@@ -44,7 +44,16 @@ def check_provenance(results: dict[str, Any], config: Config) -> list[str]:
     # es como se marcaba antes de que existiera el campo. Un artefacto viejo
     # tiene que seguir siendo rechazado.
     sha = str(provenance.get("git_sha") or "")
-    if provenance.get("dirty") is True or sha.endswith("-dirty"):
+    if not sha:
+        # El flag local se puede sortear; el gate no. Un artefacto producido
+        # dentro de la imagen llega aqui con git_sha nulo y todos los digests
+        # cuadrando, asi que sin esta comprobacion pasaria.
+        failures.append(
+            "Los resultados no llevan git_sha: se produjeron donde no habia un "
+            "repositorio git resoluble, probablemente dentro de la imagen, y no se "
+            "pueden atar a ningun commit. Vuelve a correr la evaluacion desde un clon."
+        )
+    elif provenance.get("dirty") is True or sha.endswith("-dirty"):
         failures.append(
             "Los resultados se produjeron sobre un arbol con cambios sin commitear "
             f"(git_sha={sha or 'desconocido'}), asi que no se puede saber que codigo "

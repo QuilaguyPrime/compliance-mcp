@@ -68,6 +68,16 @@ class DirtyTreeError(RuntimeError):
     """Se pidio producir un artefacto publicable desde un arbol con cambios."""
 
 
+class UnresolvedProvenanceError(DirtyTreeError):
+    """No hay commit al que atribuir el resultado.
+
+    Subclase de DirtyTreeError y no un error hermano: la pregunta es la misma
+    -"puedo atribuir estos numeros a un codigo concreto?"- y los `main()` que ya
+    capturan DirtyTreeError la manejan sin tocar una linea. Dos guardias
+    separados invitan a llamar solo a uno.
+    """
+
+
 @dataclass(frozen=True)
 class GitState:
     """Commit actual y si el arbol tiene cambios que afecten al resultado."""
@@ -132,6 +142,18 @@ def require_clean_tree(*, allow_dirty: bool = False) -> GitState:
     que no arranca.
     """
     state = git_state()
+    if state.sha is None and not allow_dirty:
+        # Se comprueba la RESOLUBILIDAD, no el entorno. Mirar /.dockerenv diria
+        # donde se corre, que es otra pregunta: fallaria en un contenedor con el
+        # repo montado, donde el commit si se puede resolver, y pasaria en un
+        # chroot sin git, donde no.
+        raise UnresolvedProvenanceError(
+            "No hay un repositorio git resoluble, asi que estos numeros no se "
+            "podrian atribuir a ningun commit. Suele significar que se esta "
+            "ejecutando dentro de la imagen: la imagen sirve, no evalua. Corre la "
+            "evaluacion desde un clon, o repite con --allow-dirty si sabes lo que "
+            "haces: el artefacto quedara con git_sha nulo y el gate lo rechazara."
+        )
     if state.dirty and not allow_dirty:
         listed = "\n  ".join(state.dirty_paths[:20])
         extra = "" if len(state.dirty_paths) <= 20 else f"\n  ... y {len(state.dirty_paths) - 20} mas"

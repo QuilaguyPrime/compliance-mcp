@@ -17,6 +17,7 @@ from compliance_mcp.eval.gate import check_provenance
 from compliance_mcp.provenance import (
     DirtyTreeError,
     GitState,
+    UnresolvedProvenanceError,
     git_state,
     provenance_block,
     require_clean_tree,
@@ -113,6 +114,65 @@ def test_allow_dirty_deja_pasar(monkeypatch):
 def test_el_arbol_limpio_pasa_sin_flag(monkeypatch):
     fake_git(monkeypatch, "")
     assert require_clean_tree().dirty is False
+
+
+# -------------------------------------------- procedencia irresoluble
+
+
+def no_git(monkeypatch) -> None:
+    """Sin repositorio resoluble: es lo que ve el proceso dentro de la imagen,
+    donde la etapa runtime no instala git."""
+
+    def _git(*args: str) -> str:
+        raise OSError("git no esta instalado")
+
+    monkeypatch.setattr(provenance, "_git", _git)
+
+
+def test_sin_commit_resoluble_no_se_produce_artefacto(monkeypatch):
+    """La imagen sirve, no evalua, y esto lo hace cumplir en vez de confiar en
+    que alguien lo recuerde."""
+    no_git(monkeypatch)
+    with pytest.raises(UnresolvedProvenanceError) as excinfo:
+        require_clean_tree()
+    assert "no evalua" in str(excinfo.value)
+    assert "--allow-dirty" in str(excinfo.value)
+
+
+def test_allow_dirty_tambien_cubre_la_procedencia_irresoluble(monkeypatch):
+    no_git(monkeypatch)
+    assert require_clean_tree(allow_dirty=True).sha is None
+
+
+def test_los_main_existentes_manejan_el_error_sin_cambiar(monkeypatch):
+    """La razon de que sea subclase de DirtyTreeError.
+
+    Los `main()` de ablacion y generacion capturan DirtyTreeError para salir con
+    un mensaje y codigo 1 en vez de una traza. Si esto fuera un error hermano,
+    se escaparia de ese except y volveria a salir como traza sin que nadie lo
+    notara hasta verlo en un log.
+    """
+    assert issubclass(UnresolvedProvenanceError, DirtyTreeError)
+    no_git(monkeypatch)
+    with pytest.raises(DirtyTreeError):
+        require_clean_tree()
+
+
+def test_el_gate_rechaza_un_artefacto_sin_git_sha(config):
+    """El flag local se puede sortear; el gate no."""
+    provenance_data = clean_provenance(config)
+    provenance_data["git_sha"] = None
+    failures = check_provenance({"provenance": provenance_data}, config)
+    assert len(failures) == 1
+    assert "no llevan git_sha" in failures[0]
+
+
+def test_el_gate_rechaza_un_artefacto_con_git_sha_ausente(config):
+    provenance_data = clean_provenance(config)
+    del provenance_data["git_sha"]
+    failures = check_provenance({"provenance": provenance_data}, config)
+    assert len(failures) == 1
+    assert "no llevan git_sha" in failures[0]
 
 
 # ------------------------------------------------------------------ procedencia

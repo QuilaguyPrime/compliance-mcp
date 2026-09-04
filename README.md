@@ -179,17 +179,22 @@ and the one CI uses; pinning it in the Dockerfile would also force emulation
 when building on the Apple Silicon machine this is developed on, so the build
 stays native there while the intent is still recorded.
 
-Measured on a first build with a cold cache, `linux/arm64` native: **2.73 GB**
-in 12 layers, **8 min 28 s**. Almost all of it is the runtime the server needs
-rather than anything this project ships — 1.41 GB of virtualenv, of which torch
-alone is 656 MB, plus 439 MB of embedding weights. The corpus and all three
-indexes together are 21 MB, which is why they are baked in rather than mounted.
+Measured on `linux/amd64`, built from scratch in CI: **1.99 GB**, 12 layers,
+**18 min**. The same image on `linux/arm64` is 2.73 GB and builds natively in
+8 min 28 s — the whole difference is the torch wheel, since the embedding
+weights and the application layers are byte-identical across both. Almost all
+of the size is the runtime the server needs rather than anything this project
+ships: 1.4 GB of virtualenv plus 439 MB of embedding weights, against 21 MB for
+the corpus and all three indexes, which is why those are baked in rather than
+mounted.
 
 **The image serves; it does not evaluate.** `git` is not installed in the
 runtime stage, so `git_sha` resolves to `None` inside a container and any
 evaluation artifact produced there would carry provenance that cannot be traced
-to a commit. Run `make eval` and `make eval-generation` from a clone, not from
-the image.
+to a commit. That is enforced rather than remembered: the artifact generators
+abort with `UnresolvedProvenanceError` when no commit can be resolved, and the
+CI gate rejects any artifact whose `git_sha` is null. Run `make eval` and
+`make eval-generation` from a clone.
 
 ```bash
 cp .env.example .env                      # then fill in the keys
