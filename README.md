@@ -5,7 +5,8 @@
 *[Leer en espanol](README.es.md)*
 
 An MCP server over the NIST SP 800-53 Rev 5 catalog, with hybrid retrieval,
-citations verified against the corpus, and schema-validated output.
+citations checked against the passages actually shown to the model, and
+schema-validated output.
 
 > **Retrieval is measured; the generation chain is not.** The retrieval numbers
 > below come from a real run on the test split, recorded with provenance in
@@ -119,9 +120,11 @@ a control it cannot back, it becomes a refusal. Refusing is a valid outcome of
 the system, not a failure of it.
 
 That is why the hallucinated-citation rate on **served** answers is zero by
-construction. Since that would turn the CI gate into a formality, the evaluation
-separately measures the **raw** rate — over what the model emitted before the
-policy discarded anything — and that is the one the gate enforces.
+construction. Since that would turn the CI gate into a formality, the harness is
+built to score the **raw** rate instead — over what the model emitted before the
+policy discarded anything — and that is the rate the gate threshold reads. It has
+never been run against the real chain, so that threshold has never had a number
+to judge.
 
 ## Where every number comes from, and how you know it is not stale
 

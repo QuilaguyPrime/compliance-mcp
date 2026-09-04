@@ -7,7 +7,8 @@
 > version puede quedarse atras.
 
 Servidor MCP sobre el catalogo NIST SP 800-53 Rev 5 con recuperacion hibrida,
-citaciones verificadas contra el corpus y salida validada por esquema.
+citas comprobadas contra los pasajes que de verdad se le mostraron al modelo
+y salida validada por esquema.
 
 > **La recuperacion esta medida; la cadena de generacion no.** La ablacion, con
 > sus intervalos de confianza, esta en el README en ingles y en
@@ -41,9 +42,10 @@ sobre un control que no puede respaldar, se convierte en rehuso. Rehusar es un
 resultado valido del sistema, no un fallo suyo.
 
 Por eso la tasa de citas alucinadas **servidas** es cero por construccion. Como
-eso convertiria el gate de CI en un tramite, la evaluacion mide aparte la tasa
-**en bruto**, sobre lo que el modelo emitio antes de que la politica descartara
-nada, y es esa la que el gate hace cumplir.
+eso convertiria el gate de CI en un tramite, el arnes esta hecho para puntuar la
+tasa **en bruto**, sobre lo que el modelo emitio antes de que la politica
+descartara nada, y es esa la que lee el umbral del gate. Nunca se ha corrido
+contra la cadena real, asi que ese umbral no ha tenido ningun numero que juzgar.
 
 ## De donde sale cada numero, y como se sabe que no esta caducado
 
@@ -111,10 +113,11 @@ estilo de consulta, 15 en los que rehusar es la unica respuesta correcta y 15
 adversariales. El split train/test es determinista por hash del id del caso;
 los hiperparametros se ajustan solo en train y se reporta test.
 
-La evaluacion de generacion mide tres cosas que conviene no mezclar: fidelidad
-de las citas en bruto, comportamiento de rehuso (recall de rehuso **y** tasa de
-rehuso falso, que hay que leer juntos porque rehusar siempre saca 1.0 en el
-primero) y cifras afirmadas sin fuente. El baseline extractivo copia, asi que su
+El arnes de generacion esta hecho para medir tres cosas que conviene no mezclar
+-fidelidad de las citas en bruto, comportamiento de rehuso (recall de rehuso **y**
+tasa de rehuso falso, que hay que leer juntos porque rehusar siempre saca 1.0 en
+el primero) y cifras afirmadas sin fuente-, aunque solo se ha ejecutado contra el
+baseline extractivo. El baseline extractivo copia, asi que su
 precision de citacion es 1.0 por construccion y no por merito: nunca se inyecta
 como evidencia en el gate.
 
