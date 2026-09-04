@@ -23,6 +23,7 @@ from typing import Any
 from . import __version__
 from .config import Config, load_config
 from .generation.engine import AnswerEngine
+from .generation.providers import ProviderError
 from .observability import configure_logging, log_event, trace_context
 from .retrieval.search import SearchFilters
 from .validation import ToolInputError, ToolInputValidator
@@ -214,7 +215,20 @@ def build_server(config: Config, *, engine: AnswerEngine | None = None) -> Any:
                     baseline=baseline,
                     include_withdrawn=default_include_withdrawn,
                 )
-            answer = engine.answer(question, top_k=top_k, filters=filters)
+            try:
+                answer = engine.answer(question, top_k=top_k, filters=filters)
+            except ProviderError as exc:
+                # Que ningun proveedor pueda responder no es un fallo interno del
+                # servidor: es una condicion que quien llama puede entender y
+                # arreglar, casi siempre una credencial que falta. Sin esto el
+                # mensaje se queda en el servidor y el cliente ve un error
+                # generico. search_controls y get_control siguen funcionando.
+                log_event("tool.answer_question.no_provider", error=str(exc))
+                raise _tool_error(
+                    "No hay ningun proveedor de generacion disponible, asi que "
+                    f"answer_question no puede responder: {exc}. Las herramientas "
+                    "search_controls y get_control no necesitan proveedor."
+                ) from exc
             return answer.to_dict()
 
     log_event(

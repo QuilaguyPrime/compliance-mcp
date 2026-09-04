@@ -70,9 +70,21 @@ class AnthropicProvider:
                 raise ProviderError(
                     "Falta el paquete `anthropic`. Instala el extra: pip install -e '.[serve]'"
                 ) from exc
-            self._client = anthropic.Anthropic(
+            try:
+                self._client = anthropic.Anthropic(
                 timeout=self._timeout, max_retries=self._max_retries
             )
+            except Exception as exc:
+                # Excepcion ancha a proposito: cada SDK lanza su propio tipo al
+                # construir sin credencial (OpenAIError, y lo que traiga la
+                # proxima version), y ninguno comparte base con ProviderError. Si
+                # escapa de aqui, ProviderChain no lo captura, la degradacion al
+                # siguiente proveedor no ocurre y el cliente MCP recibe un error
+                # crudo de un SDK que ni sabia que existia.
+                raise ProviderError(
+                    f"No se pudo construir el cliente de {self.name}: "
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
         return self._client
 
     def generate(self, question: str, context: AnswerContext) -> Completion:
@@ -129,7 +141,19 @@ class OpenAIProvider:
                 raise ProviderError(
                     "Falta el paquete `openai`. Instala el extra: pip install -e '.[serve]'"
                 ) from exc
-            self._client = openai.OpenAI(timeout=self._timeout, max_retries=self._max_retries)
+            try:
+                self._client = openai.OpenAI(timeout=self._timeout, max_retries=self._max_retries)
+            except Exception as exc:
+                # Excepcion ancha a proposito: cada SDK lanza su propio tipo al
+                # construir sin credencial (OpenAIError, y lo que traiga la
+                # proxima version), y ninguno comparte base con ProviderError. Si
+                # escapa de aqui, ProviderChain no lo captura, la degradacion al
+                # siguiente proveedor no ocurre y el cliente MCP recibe un error
+                # crudo de un SDK que ni sabia que existia.
+                raise ProviderError(
+                    f"No se pudo construir el cliente de {self.name}: "
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
         return self._client
 
     def generate(self, question: str, context: AnswerContext) -> Completion:
