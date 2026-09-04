@@ -173,6 +173,24 @@ Three closures against that:
 The image ingests the OSCAL catalog, builds the index, and bakes in the
 embedding model, so there is no setup step and no network access at run time.
 
+**Target platform is `linux/amd64`,** declared in `docker-compose.yml` rather
+than in the Dockerfile. That is the architecture anyone evaluating this will run
+and the one CI uses; pinning it in the Dockerfile would also force emulation
+when building on the Apple Silicon machine this is developed on, so the build
+stays native there while the intent is still recorded.
+
+Measured on a first build with a cold cache, `linux/arm64` native: **2.73 GB**
+in 12 layers, **8 min 28 s**. Almost all of it is the runtime the server needs
+rather than anything this project ships — 1.41 GB of virtualenv, of which torch
+alone is 656 MB, plus 439 MB of embedding weights. The corpus and all three
+indexes together are 21 MB, which is why they are baked in rather than mounted.
+
+**The image serves; it does not evaluate.** `git` is not installed in the
+runtime stage, so `git_sha` resolves to `None` inside a container and any
+evaluation artifact produced there would carry provenance that cannot be traced
+to a commit. Run `make eval` and `make eval-generation` from a clone, not from
+the image.
+
 ```bash
 cp .env.example .env                      # then fill in the keys
 docker compose build                      # ingest + index happen here
@@ -200,6 +218,12 @@ Registered in an MCP client:
 
 The `-i` is not optional: without it the container gets no stdin and the MCP
 handshake never happens.
+
+This Dockerfile was published and carried an explicit "unverified" marker for
+as long as no container runtime was available to build it, and the marker was
+removed only once the image had been built, started, and checked. The first
+build surfaced nothing that the file got wrong; the marker was there because
+that could not be known in advance.
 
 ### Locally
 

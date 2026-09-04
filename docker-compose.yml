@@ -15,6 +15,12 @@ services:
       context: .
       dockerfile: Dockerfile
     image: compliance-mcp:0.1.0
+    # Plataforma objetivo declarada donde se EJECUTA y no en el Dockerfile: es
+    # la arquitectura sobre la que va a correr quien evalue esto y la misma de
+    # CI, pero fijarla en el Dockerfile obligaria a emular tambien al construir
+    # en un Mac Apple Silicon, que es donde se desarrolla. Asi el build local
+    # sigue siendo nativo y rapido, y la intencion queda escrita igual.
+    platform: linux/amd64
     env_file: [.env]
     stdin_open: true
     tty: false
@@ -38,6 +44,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: compliance-mcp:0.1.0
+    platform: linux/amd64
     env_file: [.env]
     command: ["-m", "compliance_mcp.doctor"]
     restart: "no"

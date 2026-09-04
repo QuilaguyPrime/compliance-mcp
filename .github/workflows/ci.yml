@@ -129,3 +129,60 @@ jobs:
         with:
           name: ablation-results
           path: data/derived/
+
+  docker:
+    name: Imagen sin claves
+    runs-on: ubuntu-latest
+    # Afirma lo que el README promete: que esto arranca en una maquina limpia,
+    # sin credenciales y sin red. Se comprobo a mano una vez; aqui queda
+    # comprobado en cada push, que es donde lo ve quien evalua el repo.
+    #
+    # Sin `env:` a proposito. Este job NO recibe ANTHROPIC_API_KEY ni
+    # OPENAI_API_KEY: si las tuviera dejaria de medir lo que dice medir.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construir la imagen
+        # Nativo: los runners de Actions son x86_64, asi que linux/amd64 no
+        # emula aqui. La emulacion solo penaliza al construir en Apple Silicon.
+        run: docker build --platform linux/amd64 -t compliance-mcp:ci .
+
+      - name: Tamano de la imagen
+        run: |
+          docker images compliance-mcp:ci --format '{{.Repository}}:{{.Tag}} {{.Size}}'
+          docker history compliance-mcp:ci --format '{{.Size}}\t{{.CreatedBy}}' \
+            | grep -v '^0B' | head -6
+
+      - name: Preflight dentro del contenedor
+        # Sin claves, `providers` DEBE fallar: answer_question no puede
+        # responder sin proveedor. Lo que se exige es que falle SOLO por eso.
+        # Aceptar el fallo entero seria aceptar tambien un corpus ausente o un
+        # indice caducado, que es justo lo que este paso existe para detectar.
+        run: |
+          docker run --rm --entrypoint /opt/venv/bin/python compliance-mcp:ci \
+            -m compliance_mcp.doctor 2>&1 | tee doctor.log || true
+          python - <<'EOF'
+          import json, re, sys
+          line = next(l for l in open("doctor.log") if "doctor.completed" in l)
+          event = json.loads(line[line.index("{"):])
+          print("failed:", event["failed"], "| warned:", event["warned"])
+          if event["failed"] != ["providers"] or event["warned"]:
+              sys.exit("El preflight fallo por algo mas que la falta de credenciales")
+          EOF
+
+      - name: Consulta real sin red
+        # --network none: el modelo tiene que salir de la cache horneada en la
+        # imagen. Si faltara, aqui se veria en vez de en la primera consulta de
+        # un usuario.
+        run: |
+          docker run --rm --network none compliance-mcp:ci -c "
+          from compliance_mcp.config import load_config
+          from compliance_mcp.retrieval.search import Retriever
+          hits = Retriever.build(load_config(None), with_dense=True).search(
+              'how often must audit records be reviewed?', top_k=3)
+          assert hits, 'search_controls no devolvio ningun control'
+          for h in hits:
+              print(f'{h.rank}. {h.label} {h.title}')
+          " 2>&1 | tee query.log
+          grep -qE '^1\. [A-Z]{2}-[0-9]' query.log \
+            || { echo "La consulta no devolvio controles"; exit 1; }
