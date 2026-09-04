@@ -133,6 +133,12 @@ jobs:
   docker:
     name: Imagen sin claves
     runs-on: ubuntu-latest
+    # Solo en main: el job tarda 18 minutos porque construye la imagen entera,
+    # y dentro de ella repite el ingest y el indice que `eval-gate` ya hace. En
+    # una PR se pagarian dos veces los mismos 13 minutos de trabajo. Lo que este
+    # job afirma -que la imagen arranca en una maquina limpia sin claves- cambia
+    # con el Dockerfile, no con cada commit.
+    if: github.ref == 'refs/heads/main'
     # Afirma lo que el README promete: que esto arranca en una maquina limpia,
     # sin credenciales y sin red. Se comprobo a mano una vez; aqui queda
     # comprobado en cada push, que es donde lo ve quien evalua el repo.

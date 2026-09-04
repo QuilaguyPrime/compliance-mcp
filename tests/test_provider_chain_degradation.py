@@ -87,7 +87,7 @@ def test_el_fallo_al_construir_openai_sale_como_provider_error(monkeypatch):
 
 
 def test_si_el_primario_no_construye_se_degrada_al_secundario(monkeypatch, empty_context):
-    """El caso que costaria una corrida de la fase 5 a mitad de camino."""
+    """El caso que tumbaria una corrida de evaluacion a mitad de camino."""
     primary = AnthropicProvider(SPEC_ANTHROPIC)
     break_construction(monkeypatch, primary, ProviderError("no se pudo construir"))
     chain = ProviderChain([primary, FakeProvider()])

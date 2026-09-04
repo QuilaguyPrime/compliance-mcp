@@ -21,6 +21,10 @@ escrito como criterio en prosa para un humano ("no puede confirmar que exista
 un requisito de rotacion de 90 dias"), no como cadena comparable. Fingir que se
 comprueba con un `in` seria peor que no comprobarlo, asi que esos casos se
 vuelcan en el bloque `manual_review` para adjudicacion humana.
+
+Este arnes nunca se ha ejecutado contra la cadena real de proveedores: solo
+contra el baseline extractivo. Las cifras de fidelidad, rehuso y coste del
+sistema servido no existen, y eso quedo fuera del alcance del proyecto.
 """
 from __future__ import annotations
 

@@ -9,10 +9,11 @@
 Servidor MCP sobre el catalogo NIST SP 800-53 Rev 5 con recuperacion hibrida,
 citaciones verificadas contra el corpus y salida validada por esquema.
 
-> **Estado: en construccion (fase 4 de 5).** El README definitivo, con la tabla
-> de ablacion, el coste por consulta y las latencias medidas, se escribe en la
-> fase 5. Hasta entonces este fichero no contiene ningun numero: los numeros
-> solo se publican cuando salen de una corrida real.
+> **La recuperacion esta medida; la cadena de generacion no.** La ablacion, con
+> sus intervalos de confianza, esta en el README en ingles y en
+> `data/derived/ablation.json`. La fidelidad de citas, el comportamiento de
+> rehuso, el coste y la latencia de la cadena servida nunca se midieron y quedan
+> fuera del alcance del proyecto: no son trabajo aplazado.
 
 ## Que hace
 
@@ -144,14 +145,26 @@ los dos dependen de la evaluacion de generacion, que gasta API y sigue
 pendiente. Un gate que hoy no puede fallar es informacion, no verguenza: dice
 con precision que parte del sistema esta medida y cual no.
 
-### Lo que todavia no esta medido
+### Lo que esta medido y lo que no
 
-La cadena real de proveedores no se ha ejecutado nunca contra el golden set, asi
-que **no hay cifras de fidelidad de citas, de rehuso ni de coste del sistema que
-se sirve**. Lo unico medido de punta a punta es la recuperacion y el baseline
-extractivo. Requieren gasto de API y quedan para la fase 5: correr la evaluacion
-de generacion, adjudicar a mano el bloque `manual_review` y escribir el README
-definitivo con sus intervalos de confianza.
+Se afirman dos clases distintas de cosa en este repo, y solo una esta respaldada
+por medicion.
+
+**Medido:** la recuperacion, y nada mas. La ablacion cubre tres estrategias de
+chunking por tres metodos sobre los 22 casos respondibles del split de test, con
+IC95 en cada punto. La configuracion servida saca `recall@5 = 0.8636`, IC
+`[0.7273, 1.0000]`, y cada cifra lleva procedencia que el gate de CI comprueba.
+
+**Respaldado por codigo y tests unitarios, no por medicion:** la verificacion de
+citas. Esta implementada y cubierta por tests contra entradas construidas, pero
+**nunca se ha ejercitado contra la cadena real de proveedores**. Que una
+respuesta servida solo lleve citas verificadas es cierto por construccion del
+codigo, y no es la misma clase de afirmacion que `recall@5 = 0.8636`.
+
+**Sin medir:** fidelidad de citas en bruto, recall de rehuso y tasa de rehuso
+falso, cifras afirmadas sin fuente, coste por consulta y latencia de punta a
+punta. El arnes que las produciria existe y solo se ha corrido contra el
+baseline extractivo. Es una decision de alcance, no una tarea pendiente.
 
 ## Configuracion
 

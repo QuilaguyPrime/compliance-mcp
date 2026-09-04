@@ -7,11 +7,13 @@
 An MCP server over the NIST SP 800-53 Rev 5 catalog, with hybrid retrieval,
 citations verified against the corpus, and schema-validated output.
 
-> **Status: work in progress (phase 4 of 5).** The retrieval numbers below come
-> from a real run on the test split, recorded with provenance in
-> `data/derived/ablation.json`. The generation numbers — citation fidelity,
-> refusal behavior, cost per query — do not exist yet, and nothing here pretends
-> otherwise. See [What is not measured yet](#what-is-not-measured-yet).
+> **Retrieval is measured; the generation chain is not.** The retrieval numbers
+> below come from a real run on the test split, recorded with provenance in
+> `data/derived/ablation.json`. Citation fidelity, refusal behaviour, cost and
+> latency for the served chain were never measured and are outside the scope of
+> this project — not deferred to a later round. What that does and does not
+> support is set out in
+> [What is measured, and what is not](#what-is-measured-and-what-is-not).
 
 ## What it does
 
@@ -271,10 +273,11 @@ style, 15 where refusing is the only correct answer, and 15 adversarial. The
 train/test split is deterministic by hash of the case id; hyperparameters are
 tuned on train only, and test is what gets reported.
 
-Generation evaluation measures three things that are worth not mixing: raw
-citation fidelity, refusal behavior (refusal recall **and** false refusal rate,
-which have to be read together, because always refusing scores 1.0 on the
-first), and quantities asserted without a source. The extractive baseline
+The generation harness is built to measure three things that are worth not
+mixing — raw citation fidelity, refusal behaviour (refusal recall **and** false
+refusal rate, which have to be read together, because always refusing scores 1.0
+on the first), and quantities asserted without a source — though it has only
+ever been run against the extractive baseline. The extractive baseline
 copies, so its citation precision is 1.0 by construction rather than by merit:
 it is never injected as evidence into the gate.
 
@@ -356,14 +359,42 @@ which is three cases. The catalog holds 872 enhancements against 324 base
 controls, and enhancements are short and specific enough to crowd the parent out
 of the top-k.
 
-### What is not measured yet
+### What is measured, and what is not
 
-The real provider chain has never been run against the golden set, so **there
-are no citation fidelity, refusal, or cost figures for the system as served**.
-The only things measured end to end are retrieval and the extractive baseline.
-The rest requires API spend and is deferred to phase 5: run the generation
-evaluation, adjudicate the `manual_review` block by hand, and write the final
-README with its confidence intervals.
+This distinction is the point of the section, so it is stated flatly rather than
+softened. Two different kinds of claim are made in this README, and only one of
+them is backed by measurement.
+
+**Backed by measurement.** Retrieval, and only retrieval. The ablation in
+`data/derived/ablation.json` covers three chunking strategies against three
+retrieval methods on the 22 answerable cases of the test split, with 95%
+bootstrap confidence intervals on every point, plus the isolated effect of the
+parent roll-up and a per-query-style breakdown. The served configuration scores
+`recall@5 = 0.8636`, CI `[0.7273, 1.0000]`. Every one of those figures carries
+provenance — corpus, config, golden set and code digests, plus the commit — and
+the CI gate rejects the file if any of the four stops matching the tree.
+
+**Backed by code and unit tests, not by measurement.** Everything downstream of
+retrieval. Citation verification is implemented and covered by tests: quotes are
+matched against the exact passages shown to the model, each citation gets one of
+six verdicts, unverified citations are dropped, and an answer left without
+support becomes a refusal. Those tests exercise the verification logic against
+constructed inputs. **They have never been exercised against the real provider
+chain.** The claim that served answers carry only verified citations is a claim
+about the code path, true by construction, and it is not the same kind of claim
+as `recall@5 = 0.8636`.
+
+**Not measured at all.** Raw citation fidelity — how often the model invents a
+quote before the policy discards it — refusal recall and false refusal rate,
+quantities asserted without a source, cost per query, and end-to-end latency.
+The harness that would produce all of these exists in `eval/generation.py` and
+runs against the extractive baseline; it was never run against the real chain,
+which costs API spend. That is a scope decision, not a pending task.
+
+The consequence worth naming: two of the three CI gate thresholds
+(`min_citation_precision`, `max_hallucinated_citation_rate`) have never
+evaluated anything, because they read a block that only a real generation run
+produces. They are enforced, and they have never had the chance to fail.
 
 ## Configuration
 

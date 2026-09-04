@@ -208,10 +208,11 @@ gates:
   # indice caducado, una fusion mal ponderada, un corpus que no cuadra-, no de
   # calidad marginal. Para lo marginal estan los IC de ablation.json.
   min_recall_at_5: 0.60
-  # El gate exigente son estos dos, y no se han ejecutado nunca: dependen de la
-  # evaluacion de generacion, que gasta API y sigue pendiente (fase 5). Un gate que
-  # hoy no puede fallar es informacion, no verguenza: dice con precision que parte
-  # del sistema esta medida y cual no.
+  # El gate exigente son estos dos, y no se han ejecutado nunca: leen un bloque
+  # que solo produce una corrida real de la evaluacion de generacion, que gasta
+  # API y quedo fuera del alcance del proyecto. Se dejan puestos y aplicados: un
+  # gate que hoy no puede fallar es informacion, no verguenza, porque delimita
+  # con precision que parte del sistema esta medida y cual no.
   min_citation_precision: 0.95
   max_hallucinated_citation_rate: 0.0
 
